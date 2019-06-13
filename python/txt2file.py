@@ -135,7 +135,6 @@ class bdbsCat(object):
             sys.stdout.write("\r bdbsCat.processStream INFO - Starting on file %s , reporting every %i rows..." \
                                        % (self.infil, self.nBunch))
             sys.stdout.flush()
-              
 
         # this is no longer required, since the output file is always
         # set below.
@@ -307,8 +306,8 @@ def testStream(nMax=-1, nBunch=1000000, splitFiles=True, Verbose=True, infil='TE
     if 0 < nMax < 10:
         Debug=True
 
+    # try twice to test the screen output
     BD.processStream(iMax=nMax, DBG=Debug)
-
 
 def testConvertMany(srch='field_???.catalog', Debug=True):
 
@@ -323,3 +322,7 @@ def testConvertMany(srch='field_???.catalog', Debug=True):
             print thisFile
         else:
             testStream(-1,1000000,True, True, thisFile)
+
+            # ensure the stdout reporting starts on a new line.
+            print("")
+            sys.stdout.flush()
