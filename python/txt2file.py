@@ -310,7 +310,7 @@ def testStream(nMax=-1, nBunch=1000000, splitFiles=True, Verbose=True, infil='TE
     BD.processStream(iMax=nMax, DBG=Debug)
 
 
-def testConvertMany(srch='field_???.catalog'):
+def testConvertMany(srch='field_???.catalog', Debug=True):
 
     """Wrapper - starts the conversion process on a large number of files"""
 
@@ -319,5 +319,7 @@ def testConvertMany(srch='field_???.catalog'):
         return
 
     for thisFile in lFiles:
-        print thisFile
-        # testStream(-1,1000000,True, True, thisFile)
+        if Debug:
+            print thisFile
+        else:
+            testStream(-1,1000000,True, True, thisFile)
