@@ -131,6 +131,12 @@ class bdbsCat(object):
             print("bdbsCat.processStream FATAL - cannot read path %s" % (self.infil))
             return
 
+        if self.Verbose:
+            sys.stdout.write("\r bdbsCat.processStream INFO - Starting on file %s , reporting every %i rows..." \
+                                       % (self.infil, self.nBunch)
+            sys.stdout.flush()
+              
+
         # this is no longer required, since the output file is always
         # set below.
         #if len(self.outfil) < 2:
