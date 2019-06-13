@@ -7,7 +7,7 @@
 # IDs are assigned via HEALPIX.
 
 
-import os, time, sys
+import os, time, sys, glob
 import numpy as np
 import healpy
 
@@ -309,3 +309,15 @@ def testStream(nMax=-1, nBunch=1000000, splitFiles=True, Verbose=True, infil='TE
 
     BD.processStream(iMax=nMax, DBG=Debug)
 
+
+def testConvertMany(srch='field_???.catalog'):
+
+    """Wrapper - starts the conversion process on a large number of files"""
+
+    lFiles = glob.glob(srch)
+    if len(lFiles) < 1:
+        return
+
+    for thisFile in lFiles:
+        print thisFile
+        # testStream(-1,1000000,True, True, thisFile)
