@@ -133,7 +133,7 @@ class bdbsCat(object):
 
         if self.Verbose:
             sys.stdout.write("\r bdbsCat.processStream INFO - Starting on file %s , reporting every %i rows..." \
-                                       % (self.infil, self.nBunch)
+                                       % (self.infil, self.nBunch))
             sys.stdout.flush()
               
 
