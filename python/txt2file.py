@@ -7,7 +7,7 @@
 # IDs are assigned via HEALPIX.
 
 
-import os, time
+import os, time, sys
 import numpy as np
 import healpy
 
@@ -23,6 +23,14 @@ class bdbsCat(object):
         self.outfil='TEST.csv'
         self.outExt='csv'
         self.outDir='tiles'
+
+        self.lineHeader=''
+
+        # are we splitting the output across multiple files?
+        self.splitFiles=False
+
+        # number of lines to write in a bunch
+        self.nBunch=1000000
 
         #catalog array
         self.aCat=np.array([])
@@ -123,25 +131,81 @@ class bdbsCat(object):
             print("bdbsCat.processStream FATAL - cannot read path %s" % (self.infil))
             return
 
-        if len(self.outfil) < 2:
-            print("bdbsCat.processStream FATAL - output file not set.")
-            return
+        # this is no longer required, since the output file is always
+        # set below.
+        #if len(self.outfil) < 2:
+        #    print("bdbsCat.processStream FATAL - output file not set.")
+        #    return
         
-        pathOut="%s/%s" % (self.outDir, self.outfil)
+        # We want this to operate sensibly whether the outputs are to
+        # be split across multiple files or not. The easiest way is
+        # probably to use the same variable convention for both
+        # cases. So:
+        iBunch = 0
+        pathOut=self.getIthOutfile(iBunch)
+
+        # we write the header line to the file, then later will open it as APPEND
+        if len(self.lineHeader) > 1:
+            with open(pathOut, "w") as wObj:
+                wObj.write("%s\n" % (self.lineHeader))
+
+        # reference time for reporting the timing later on
+        t0 = time.time()
 
         iCount = 0
-        with open(self.infil, "r") as rObj, open(pathOut, "w") as wObj:
+        with open(self.infil, "r") as rObj:
+
+            # do this in pieces to avoid excessive writeout thrashing
+            bunch=[]
+
             for line in rObj:
-
                 lProc = self.processInputLine(line, DBG=DBG)
+                bunch.append(lProc)
+                iCount = iCount + 1
 
-                wObj.write("%s" % (lProc))
+                if len(bunch) == self.nBunch:
+                    with open(pathOut, "a") as wObj:
+                        wObj.writelines(bunch)
+                    bunch = []
+                    iBunch = iBunch + 1
+
+                    # report progress to screen?
+                    if self.Verbose:
+                        sys.stdout.write("\r bdbsCat.processStream INFO - written line %-11i of %s to %s after %.2e seconds" \
+                                       % (iCount, self.infil, pathOut, time.time()-t0))
+                        sys.stdout.flush()
+                    # if we're splitting the output up by bunch,
+                    # create the new pathname and initialise the file
+                    if self.splitFiles:
+                        pathOut = self.getIthOutfile(iBunch)
+                        with open(pathOut, "w") as wObj:
+                            wObj.write("%s\n" % (self.lineHeader))
+
+                # wObj.write("%s" % (lProc))
 
                 # counter so that we only need open the first few
                 # lines for testing
-                iCount = iCount + 1
                 if iCount > iMax and iMax > 0:
                     break
+
+            # once broken out of the loop, ensure the remaining
+            # partial bunch is also written to disk.
+            if len(bunch) > 0:
+                with open(pathOut, "a") as wObj:
+                    wObj.writelines(bunch)
+
+            if self.Verbose:
+                sys.stdout.write("\r bdbsCat.processStream INFO - written line %-11i of %s to %s after %.2e seconds" \
+                                     % (iCount, self.infil, pathOut, time.time()-t0))
+                sys.stdout.flush()
+
+    def getIthOutfile(self, iFiles=0, exten='csv'):
+
+        """One-liner to return the current output filename"""
+
+        stem = os.path.splitext(self.infil)[0]
+        count = str(iFiles).zfill(3)
+        return "%s/%s_%s.%s" % (self.outDir, stem, count, exten)
 
     def processInputLine(self, lineIn='', DBG=False):
 
@@ -149,7 +213,11 @@ class bdbsCat(object):
         assigns a HEALPIX-based ID, tacks the ID onto the beginning of
         the output string, and returns the string including
         commas. Note that the carriage return is retained on the
-        output as well as the input."""
+        output as well as the input.
+
+        At the moment this is pretty dumb, and may return unusual line
+        lengths e.g. if the ID setting process fails. For now, we
+        trust the input data to be uniform."""
 
         lineOut=lineIn[:]
 
@@ -184,6 +252,21 @@ class bdbsCat(object):
 
         return lineOut
 
+    def setHeaderLineCSV(self):
+
+        """Sets header line for CSV. Currently this is hardcoded
+        because I only have the one application in mind."""
+
+        listHeader=['id', 'ra', 'dec', 'raerr', 'decerr', 'radeccov', \
+                        'u', 'uerr', 'uesq', 'unobs', 'uerrfl', 'uskyflg', 'ushpflg','uovrflg', \
+                        'g', 'gerr', 'gesq', 'gnobs', 'gerrfl', 'gskyflg', 'gshpflg','govrflg', \
+                        'r', 'rerr', 'resq', 'rnobs', 'rerrfl', 'rskyflg', 'rshpflg','rovrflg', \
+                        'i', 'ierr', 'iesq', 'inobs', 'ierrfl', 'iskyflg', 'ishpflg','iovrflg', \
+                        'z', 'zerr', 'zesq', 'znobs', 'zerrfl', 'zskyflg', 'zshpflg','zovrflg', \
+                        'y', 'yerr', 'yesq', 'ynobs', 'yerrfl', 'yskyflg', 'yshpflg','yovrflg']
+
+        self.lineHeader=','.join(listHeader)
+
 def go(nsidePow=10):
 
     """Tester for some healpix functionality. Put nsidePow<=10 to reproduce the NASA HEALPIX frontpage documenation examples."""
@@ -192,21 +275,31 @@ def go(nsidePow=10):
     BD.estHealpixSpacing()
     BD.wrapLoadAndID()
 
-def testStream(nMax=5):
+def testStream(nMax=-1, nBunch=1000000, splitFiles=True, Verbose=True, infil='TEST.catalog'):
 
-    """Tests stream-based reading of input file"""
+    """Tests stream-based reading of input file. Example calls:
+
+    txt2file.testStream(2000, nBunch=237, splitFiles=True)
+
+    txt2file.testStream(-1, nBunch=100000, splitFiles=True, Verbose=True)"""
     
-    BD = bdbsCat(nsidePow=22)
+    BD = bdbsCat(infil, 22)
     BD.setOutputFilename()
     BD.ensureOutdirExists()
 
-    print BD.outfil
-    BD.processStream(iMax=nMax, DBG=True)
+    # control the bunch size so we can test our splitter; determine
+    # whether output written to screen
+    BD.nBunch=nBunch
+    BD.Verbose=Verbose
 
-    # this works reasonably well. To add:
-    #
-    # (i) bunching of output lines to avoid HDD thrashing
-    #
-    # (ii) column names entry for csv files
-    # 
-    # (iii) Option to set max lines for output files
+    # are we distributing the output across multiple files?
+    BD.splitFiles=splitFiles
+
+    BD.setHeaderLineCSV()
+
+    Debug=False
+    if 0 < nMax < 10:
+        Debug=True
+
+    BD.processStream(iMax=nMax, DBG=Debug)
+
