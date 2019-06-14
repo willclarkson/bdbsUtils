@@ -15,7 +15,7 @@ class bdbsCat(object):
 
     """Object for BDBS catalog"""
 
-    def __init__(self, infil='TEST.catalog', nsidePow=22):
+    def __init__(self, infil='TEST.catalog', nsidePow=22, idMin=0, useHealpix=True):
 
         self.infil=infil[:]
 
@@ -25,6 +25,13 @@ class bdbsCat(object):
         self.outDir='tiles'
 
         self.lineHeader=''
+
+        # using healpix for the indices?
+        self.useHealpix=useHealpix
+
+        # if we're using a straight index for the ID, supply it here.
+        self.idMin=idMin
+        self.idMax=-1  # counter for the maximum ID reached
 
         # are we splitting the output across multiple files?
         self.splitFiles=False
@@ -164,9 +171,19 @@ class bdbsCat(object):
             bunch=[]
 
             for line in rObj:
-                lProc = self.processInputLine(line, DBG=DBG)
-                bunch.append(lProc)
+
+                # line counter
                 iCount = iCount + 1
+
+                # if we've decided NOT to use healpix after all, we use a dumb index instead.
+                suppID = -1
+                if not self.useHealpix:
+                    suppID = self.idMin + iCount
+                    self.idMax = np.copy(suppID)  # pass to the instance
+
+                # do the processing
+                lProc = self.processInputLine(line, DBG=DBG, IDsupp=suppID)
+                bunch.append(lProc)
 
                 if len(bunch) == self.nBunch:
                     with open(pathOut, "a") as wObj:
@@ -212,7 +229,7 @@ class bdbsCat(object):
         count = str(iFiles).zfill(3)
         return "%s/%s_%s.%s" % (self.outDir, stem, count, exten)
 
-    def processInputLine(self, lineIn='', DBG=False):
+    def processInputLine(self, lineIn='', DBG=False, IDsupp=-1):
 
         """For a single input string, extracts the coordinates,
         assigns a HEALPIX-based ID, tacks the ID onto the beginning of
@@ -222,7 +239,10 @@ class bdbsCat(object):
 
         At the moment this is pretty dumb, and may return unusual line
         lengths e.g. if the ID setting process fails. For now, we
-        trust the input data to be uniform."""
+        trust the input data to be uniform.
+
+        IDsupp allows the healpy-generated ID to be replaced"""
+
 
         lineOut=lineIn[:]
 
@@ -241,10 +261,14 @@ class bdbsCat(object):
         thisDE = np.float(lSplit[self.colDE])
 
         # hack since I don't have updated healpy on my laptop
-        try:
-            thisID = healpy.ang2pix(self.nside, thisRA, thisDE, lonlat=True)
-        except:
-            thisID = healpy.ang2pix(self.nside, np.radians(thisRA)-np.pi, np.radians(thisDE))
+
+        if self.useHealpix:
+            try:
+                thisID = healpy.ang2pix(self.nside, thisRA, thisDE, lonlat=True)
+            except:
+                thisID = healpy.ang2pix(self.nside, np.radians(thisRA)-np.pi, np.radians(thisDE))
+        else:
+            thisID = IDsupp
 
         lSplit.insert(0,"%i" % (thisID))
 
@@ -280,15 +304,20 @@ def go(nsidePow=10):
     BD.estHealpixSpacing()
     BD.wrapLoadAndID()
 
-def testStream(nMax=-1, nBunch=1000000, splitFiles=True, Verbose=True, infil='TEST.catalog'):
+def testStream(nMax=-1, nBunch=1000000, splitFiles=True, Verbose=True, infil='TEST.catalog', \
+                   useHealpix=True, idMin=0):
 
     """Tests stream-based reading of input file. Example calls:
 
     txt2file.testStream(2000, nBunch=237, splitFiles=True)
 
-    txt2file.testStream(-1, nBunch=100000, splitFiles=True, Verbose=True)"""
+    txt2file.testStream(-1, nBunch=100000, splitFiles=True, Verbose=True)
+
+    txt2file.testStream(2000, nBunch=237, splitFiles=True, idMin=0, useHealpix=False)
+
+    """
     
-    BD = bdbsCat(infil, 22)
+    BD = bdbsCat(infil, 22, useHealpix=useHealpix, idMin=idMin)
     BD.setOutputFilename()
     BD.ensureOutdirExists()
 
@@ -309,7 +338,10 @@ def testStream(nMax=-1, nBunch=1000000, splitFiles=True, Verbose=True, infil='TE
     # try twice to test the screen output
     BD.processStream(iMax=nMax, DBG=Debug)
 
-def testConvertMany(srch='field_???.catalog', Debug=True):
+    # return the maximum ID
+    return BD.idMax
+
+def testConvertMany(srch='field_???.catalog', Debug=True, useHealpix=True):
 
     """Wrapper - starts the conversion process on a large number of files"""
 
@@ -317,11 +349,17 @@ def testConvertMany(srch='field_???.catalog', Debug=True):
     if len(lFiles) < 1:
         return
 
+    # do the idMin increment in case we're not using Healpix
+    idMin=0
+
     for thisFile in lFiles:
         if Debug:
             print thisFile
         else:
-            testStream(-1,1000000,True, True, thisFile)
+            idMax = testStream(-1,1000000,True, True, thisFile, useHealpix=useHealpix, idMin=idMin)
+
+            # set the new idMin for the next round...
+            idMin = idMax + 1
 
             # ensure the stdout reporting starts on a new line.
             print("")
