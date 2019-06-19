@@ -11,6 +11,8 @@ import os, time, sys, glob
 import numpy as np
 import healpy
 
+from astropy.table import Table
+
 class bdbsCat(object):
 
     """Object for BDBS catalog"""
@@ -364,3 +366,57 @@ def testConvertMany(srch='field_???.catalog', Debug=True, useHealpix=True):
             # ensure the stdout reporting starts on a new line.
             print("")
             sys.stdout.flush()
+
+def csv2fits(infil='NONE', Verbose=True, outDir='fits'):
+
+    """Converts the newly-standardized csv files to fits"""
+
+    if not os.access(infil, os.R_OK):
+        if Verbose:
+            print("csv2fits WARN - cannot read path %s" % (infil))
+        return False
+    
+    inTail = os.path.split(infil)[-1]
+    outPath = '%s/%s.fits' % (outDir, os.path.splitext(inTail)[0])
+    if not os.path.isdir(outDir):
+        os.makedirs(outDir)
+
+    if Verbose:
+        sys.stdout.write("\r csv2fits INFO - converting %s to %s" \
+                             % (inTail, outPath))
+        sys.stdout.flush()
+
+    # for the moment, trust the astropy Table reader to get the format
+    # correct
+    tIn = Table.read(infil)
+    tIn.write(outPath, format='fits', overwrite=True)
+
+    return True
+
+def wrapCSV2fits(srchStr='TEST_*.csv', ext='', outDir='fits', \
+                     showList=False, Verbose=True):
+
+    """Wrapper - converts all matching .csv files to fits.
+
+    srchStr = search string for glob
+    outDir = output directory (will be created if absent)
+    ext = separate string for file extension (optional)
+    showList = print the list of found files to terminal
+
+    """
+    
+    searchString = srchStr[:]
+    if len(ext) > 0:
+        searchString = '%s*.%s' % (searchString, ext)
+
+    lcsv = glob.glob(searchString)
+    if len(lcsv) < 1:
+        print("wrapCSV2fits WARN - no results for %s" % (searchString))
+        return
+
+    if showList:
+        print lcsv
+
+    # start the loop through the files
+    for infile in lcsv:
+        csv2fits(infile, outDir=outDir, Verbose=Verbose)
